@@ -3148,20 +3148,12 @@ EXPORT_SYMBOL_GPL(perf_event_release_kernel);
 /*
  * Called when the last reference to the file is gone.
  */
-static int perf_release(struct inode *inode, struct file *file)
+static void put_event(struct perf_event *event)
 {
-	struct perf_event *event = file->private_data;
 	struct task_struct *owner;
 
-	/*
-	 * Event can be in state OFF because of a constraint check.
-	 * Change to ACTIVE so that it gets cleaned up correctly.
-	 */
-	if ((event->state == PERF_EVENT_STATE_OFF) &&
-	    event->attr.constraint_duplicate)
-		event->state = PERF_EVENT_STATE_ACTIVE;
-
-	file->private_data = NULL;
+	if (!atomic_long_dec_and_test(&event->refcount))
+		return;
 
 	rcu_read_lock();
 	owner = ACCESS_ONCE(event->owner);
@@ -3205,7 +3197,23 @@ static int perf_release(struct inode *inode, struct file *file)
 		put_task_struct(owner);
 	}
 
-	return perf_event_release_kernel(event);
+	perf_event_release_kernel(event);
+}
+
+static int perf_release(struct inode *inode, struct file *file)
+{
+	struct perf_event *event = file->private_data;
+
+	/*
+	 * Event can be in state OFF because of a constraint check.
+	 * Change to ACTIVE so that it gets cleaned up correctly.
+	 */
+	if ((event->state == PERF_EVENT_STATE_OFF) &&
+		event->attr.constraint_duplicate)
+		event->state = PERF_EVENT_STATE_ACTIVE;
+
+	put_event(file->private_data);
+	return 0;
 }
 
 u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)
@@ -6298,6 +6306,7 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
 
 	mutex_init(&event->mmap_mutex);
 
+	atomic_long_set(&event->refcount, 1);
 	event->cpu		= cpu;
 	event->attr		= *attr;
 	event->group_leader	= group_leader;
@@ -6866,7 +6875,6 @@ SYSCALL_DEFINE5(perf_event_open,
 		mutex_lock(&ctx->mutex);
 	}
 
-	event->filp = event_file;
 	WARN_ON_ONCE(ctx->parent_ctx);
 
 	if (move_group) {
@@ -7059,7 +7067,7 @@ static void sync_child_event(struct perf_event *child_event,
 	 * Release the parent event, if this was the last
 	 * reference to it.
 	 */
-	fput(parent_event->filp);
+	put_event(parent_event);
 }
 
 static void
@@ -7198,7 +7206,7 @@ static void perf_free_event(struct perf_event *event,
 	list_del_init(&event->child_list);
 	mutex_unlock(&parent->child_mutex);
 
-	fput(parent->filp);
+	put_event(parent);
 
 	perf_group_detach(event);
 	list_del_event(event, ctx);
@@ -7278,6 +7286,12 @@ inherit_event(struct perf_event *parent_event,
 				           NULL, NULL);
 	if (IS_ERR(child_event))
 		return child_event;
+
+	if (!atomic_long_inc_not_zero(&parent_event->refcount)) {
+		free_event(child_event);
+		return NULL;
+	}
+
 	get_ctx(child_ctx);
 
 	/*
@@ -7317,14 +7331,6 @@ inherit_event(struct perf_event *parent_event,
 	raw_spin_lock_irqsave(&child_ctx->lock, flags);
 	add_event_to_ctx(child_event, child_ctx);
 	raw_spin_unlock_irqrestore(&child_ctx->lock, flags);
-
-	/*
-	 * Get a reference to the parent filp - we will fput it
-	 * when the child event exits. This is safe to do because
-	 * we are in the parent and we know that the filp still
-	 * exists and has a nonzero count:
-	 */
-	atomic_long_inc(&parent_event->filp->f_count);
 
 	/*
 	 * Link this into the parent event's child list
