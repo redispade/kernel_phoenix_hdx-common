@@ -3202,16 +3202,6 @@ static void put_event(struct perf_event *event)
 
 static int perf_release(struct inode *inode, struct file *file)
 {
-	struct perf_event *event = file->private_data;
-
-	/*
-	 * Event can be in state OFF because of a constraint check.
-	 * Change to ACTIVE so that it gets cleaned up correctly.
-	 */
-	if ((event->state == PERF_EVENT_STATE_OFF) &&
-		event->attr.constraint_duplicate)
-		event->state = PERF_EVENT_STATE_ACTIVE;
-
 	put_event(file->private_data);
 	return 0;
 }
@@ -6854,8 +6844,6 @@ SYSCALL_DEFINE5(perf_event_open,
 		 * of swizzling perf_event::ctx.
 		 */
 		mutex_lock_double(&gctx->mutex, &ctx->mutex);
-
-		mutex_lock(&gctx->mutex);
 		perf_remove_from_context(group_leader, false);
 
 		/*
@@ -6870,7 +6858,6 @@ SYSCALL_DEFINE5(perf_event_open,
 			perf_event__state_init(sibling);
 			put_ctx(gctx);
 		}
-		mutex_lock(&ctx->mutex);
 	} else {
 		mutex_lock(&ctx->mutex);
 	}
