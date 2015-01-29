@@ -47,9 +47,6 @@
 #include "epautoconf.c"
 #include "composite.c"
 
-#ifdef CONFIG_SND_RAWMIDI
-#include "f_midi.c"
-#endif
 #include "f_diag.c"
 #include "f_qdss.c"
 #include "f_rmnet_smd.c"
@@ -114,7 +111,7 @@ static const char longname[] = "Gadget Android";
 /* f_midi configuration */
 #define MIDI_INPUT_PORTS    1
 #define MIDI_OUTPUT_PORTS   1
-#define MIDI_BUFFER_SIZE    1024
+#define MIDI_BUFFER_SIZE    256
 #define MIDI_QUEUE_LENGTH   32
 
 struct android_usb_function {
@@ -2173,8 +2170,7 @@ static ssize_t audio_source_pcm_show(struct device *dev,
 	struct audio_source_config *config = f->config;
 
 	/* print PCM card and device numbers */
-	return snprintf(buf, PAGE_SIZE,
-			"%d %d\n", config->card, config->device);
+	return sprintf(buf, "%d %d\n", config->card, config->device);
 }
 
 static DEVICE_ATTR(pcm, S_IRUGO | S_IWUSR, audio_source_pcm_show, NULL);
@@ -2240,7 +2236,6 @@ static struct android_usb_function uasp_function = {
 	.bind_config	= uasp_function_bind_config,
 };
 
-#ifdef CONFIG_SND_RAWMIDI
 static int midi_function_init(struct android_usb_function *f,
 					struct usb_composite_dev *cdev)
 {
@@ -2294,7 +2289,7 @@ static struct android_usb_function midi_function = {
 	.bind_config	= midi_function_bind_config,
 	.attributes	= midi_function_attributes,
 };
-#endif
+
 static struct android_usb_function *supported_functions[] = {
 	&ffs_function,
 	&mbim_function,
@@ -2324,10 +2319,8 @@ static struct android_usb_function *supported_functions[] = {
 #ifdef CONFIG_SND_PCM
 	&audio_source_function,
 #endif
-	&uasp_function,
-#ifdef CONFIG_SND_RAWMIDI
 	&midi_function,
-#endif
+	&uasp_function,
 	&charger_function,
 	NULL
 };
@@ -3007,11 +3000,7 @@ static struct usb_composite_driver android_usb_driver = {
 	.dev		= &device_desc,
 	.strings	= dev_strings,
 	.unbind		= android_usb_unbind,
-#if defined(CONFIG_ARCH_MSM8974_APOLLO)
-        .max_speed      = USB_SPEED_HIGH
-#else
 	.max_speed	= USB_SPEED_SUPER
-#endif
 };
 
 static int
