@@ -1604,18 +1604,18 @@ try_again:
 		 */
 		vma = find_vma_prev(mm, addr, &prev);
 		vm_start = vma ? vm_start_gap(vma) : mm->mmap_base;
-		prev_end = prev ? vm_end_gap(prev) : low_limit;
+		prev_end = vm_end_gap(prev);
 
 		if (addr + len <= vm_start && addr >= prev_end)
 			/* remember the address as a hint for next time */
 			return (mm->free_area_cache = addr);
 
  		/* remember the largest hole we saw so far */
- 		if (addr + mm->cached_hole_size < vm_start)
- 		        mm->cached_hole_size = vm_start - addr;
-
+		if (addr + mm->cached_hole_size < vm_start)
+			mm->cached_hole_size = vm_start - addr;
+ 
 		/* try just below the current vma->vm_start */
-		addr = vm_start-len;
+		addr = vm_start - len;
 	} while (len < vm_start);
 
 fail:
@@ -1824,6 +1824,10 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	if (!(vma->vm_flags & VM_GROWSUP))
 		return -EFAULT;
 
+	/*
+	 * We must make sure the anon_vma is allocated
+	 * so that the anon_vma locking is not a noop.
+	 */
 	/* Guard against exceeding limits of the address space. */
 	address &= PAGE_MASK;
 	if (address >= TASK_SIZE)
@@ -1952,6 +1956,17 @@ static int __init cmdline_parse_stack_guard_gap(char *p)
 }
 __setup("stack_guard_gap=", cmdline_parse_stack_guard_gap);
 
+/*
+ * Note how expand_stack() refuses to expand the stack all the way to
+ * abut the next virtual mapping, *unless* that mapping itself is also
+ * a stack mapping. We want to leave room for a guard page, after all
+ * (the guard page itself is not added here, that is done by the
+ * actual page faulting logic)
+ *
+ * This matches the behavior of the guard page logic (see mm/memory.c:
+ * check_stack_guard_page()), which only allows the guard page to be
+ * removed under these circumstances.
+ */
 #ifdef CONFIG_STACK_GROWSUP
 int expand_stack(struct vm_area_struct *vma, unsigned long address)
 {
