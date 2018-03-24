@@ -1834,20 +1834,13 @@ static void binder_transaction(struct binder_proc *proc,
 				goto err_get_unused_fd_failed;
 			}
 			task_fd_install(target_proc, target_fd, file);
-<<<<<<< HEAD
-=======
 			trace_binder_transaction_fd(t, fp->fd, target_fd);
->>>>>>> 42713468579... android: binder: split flat_binder_object.
 			binder_debug(BINDER_DEBUG_TRANSACTION,
 				     "        fd %d -> %d\n", fp->fd,
 				     target_fd);
 			/* TODO: fput? */
-<<<<<<< HEAD
-			fp->handle = target_fd;
-=======
 			fp->pad_binder = 0;
 			fp->fd = target_fd;
->>>>>>> 42713468579... android: binder: split flat_binder_object.
 		} break;
 
 		default:
