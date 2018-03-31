@@ -2909,10 +2909,6 @@ static long do_rmdir(int dfd, const char __user *pathname)
 	error = security_path_rmdir(&nd.path, dentry);
 	if (error)
 		goto exit4;
-	if (nd.path.dentry->d_sb->s_op->unlink_callback) {
-		path_buf = kmalloc(PATH_MAX, GFP_KERNEL);
-		propagate_path = dentry_path_raw(dentry, path_buf, PATH_MAX);
-	}
 	error = vfs_rmdir2(nd.path.mnt, nd.path.dentry->d_inode, dentry);
 exit4:
 	mnt_drop_write(nd.path.mnt);
@@ -3383,7 +3379,7 @@ int vfs_rename2(struct vfsmount *mnt,
 	if (!error)
 		fsnotify_move(old_dir, new_dir, old_name, is_dir,
 			      new_dentry->d_inode, old_dentry);
-	release_dentry_name_snapshot(&old_name);
+	fsnotify_oldname_free(old_name);
 
 	return error;
 }
