@@ -5361,7 +5361,8 @@ static int perf_swevent_add(struct perf_event *event, int flags)
 
 static void perf_swevent_del(struct perf_event *event, int flags)
 {
-	hlist_del_rcu(&event->hlist_entry);
+	if(!hlist_unhashed(&event->hlist_entry))
+		hlist_del_rcu(&event->hlist_entry);
 }
 
 static void perf_swevent_start(struct perf_event *event, int flags)
@@ -7003,7 +7004,7 @@ void perf_pmu_migrate_context(struct pmu *pmu, int src_cpu, int dst_cpu)
 	mutex_lock_double(&src_ctx->mutex, &dst_ctx->mutex);
 	list_for_each_entry_safe(event, tmp, &src_ctx->event_list,
 				 event_entry) {
-		perf_remove_from_context(event);
+		perf_remove_from_context(event, true);
 		put_ctx(src_ctx);
 		list_add(&event->event_entry, &events);
 	}
